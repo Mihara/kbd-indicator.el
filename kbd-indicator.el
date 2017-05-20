@@ -57,17 +57,24 @@
   "Path of the dbus service.")
 (defconst kbd-dbus-interface "org.gtk.Actions")
 
+(defconst kbd-dbus-switcher "org.gnome.SettingsDaemon.Keyboard"
+  "Service that receives keyboard switcher events.")
+(defconst kbd-dbus-switcher-path "/org/gnome/SettingsDaemon/Keyboard"
+  "Path of the keyboard switcher service.")
+(defconst kbd-dbus-switcher-interface
+  "org.gnome.SettingsDaemon.Keyboard"
+  "Interface name of the keyboard switcher.")
+
 (defvar kbd-dbus-signal-registration nil
   "Variable to keep the signal object.")
 
-;; There is probably a dbus way to do it without calling a console command.
-;; But I don't currently know what it is.
-(defcustom kbd-dbus-language-reset-command
-  "gsettings set org.gnome.desktop.input-sources current 0"
-  "The command to reset system language to English.
-The default is GNOME/Ubuntu-specific."
-  :group 'kbd-dbus
-  :type 'string)
+(defun kbd-dbus-reset-to-english ()
+  "Reset keyboard to English by sending a dbus message."
+  (dbus-call-method
+   :session kbd-dbus-switcher
+   kbd-dbus-switcher-path
+   kbd-dbus-switcher-interface
+   "SetInputSource" 0))
 
 ;; This method of determining if Emacs is the active system window
 ;; was found at https://www.emacswiki.org/emacs/rcirc-dbus.el
@@ -105,6 +112,9 @@ Returns t if frame has focus or nil otherwise."
                                  kbd-dbus-path
                                  kbd-dbus-interface "Describe" "current")))))
 
+(defvar kbd-dbus-skip-next nil
+  "A flag we set to skip the next language change event.")
+
 (defun kbd-dbus-handler (arg1 arg2 arg3 arg4)
   "Keyboard change signal handler."
   ;; Ignore the signal if we're not the active window.
@@ -118,22 +128,23 @@ Returns t if frame has focus or nil otherwise."
                       (lambda (x)
                         (when (string= (car x) "current") (cdr x)))
                       arg3)))))
-      ;; The signals come in pairs. The first one indicates new language
+      ;; The signals appear to come in pairs.
+      ;; The first one indicates new language
       ;; and produces a number.
       ;; The second one gets us a nil, so we ignore it.
-      (when language-id
-        ;; If the language id is not 0, flip it back.
-        (when (not (eq language-id 0))
-          ;; Unfortunately we have to deregister ourselves while doing that,
-          ;; to avoid triggering again and looping.
-          ;; Dbus signals get queued, while we execute synchronously,
-          ;; so we can't just set a flag, and we don't have a way
-          ;; to know where the language change event came from.
-          (kbd-dbus-unregister-signal)
-          (shell-command-to-string kbd-dbus-language-reset-command)
-          (kbd-dbus-register-signal))
-        ;; Toggle the input method.
-        (toggle-input-method)))))
+      ;; We also skip one if we set a dlag.
+      (if (and language-id (not kbd-dbus-skip-next))
+          ;; If the language id is not 0, flip it back.
+          (progn
+            ;; Every time we switch the language, we must set a flag to
+            ;; prevent us from triggering once the keyboard-indicator realizes
+            ;; the language changed again, which happens after we're done
+            ;; processing.
+            (kbd-dbus-reset-to-english)
+            (setq kbd-dbus-skip-next t)
+            ;; Toggle the input method.
+            (toggle-input-method))
+        (setq kbd-dbus-skip-next nil)))))
 
 (defun kbd-dbus-register-signal ()
   "Register the handler to listen on language change signal."
