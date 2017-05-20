@@ -2,13 +2,20 @@
 
 This is an Ubuntu-specific way to solve an Ubuntu-specific problem: When you
 switch languages to ones that don't use Latin letters, or otherwise have a
-radically different layout, keyboard shortcuts stop
-working. See [related Ubuntu bug][bug] -- which was supposedly fixed, but keeps
+radically different layout, keyboard shortcuts stop working. See
+the [related Ubuntu bug][bug] -- which was supposedly fixed, but keeps
 reemerging anyway.
 
-Generally, in Emacs, you want to use the internal input method anyway, but
-then you have to remember to never switch the input language in Emacs, and
-have a separate keystroke to switch it inside Emacs, which is a pain.
+Generally, with Emacs, even fixing the bug for good won't be enough: While a
+clever system input method can guess that when you type `C-x` and have a
+Russian language selected, you mean `C-x` and not `C-ч`, you might have a
+keyboard combination like `C-x w`, which will come out as `C-x ц` *anyway,*
+because you release the modifier key after `C-x`. It's best not to use the
+system language switcher in Emacs at all.
+
+But if you're up to that, you have to remember to never touch the requisite
+key combination in Emacs, and have a separate keystroke to switch it inside
+Emacs, which is a pain.
 
 This dirty hack alleviates this pain, by reaching across Dbus into Ubuntu's
 keyboard-indicator applet and registering to listen to language change events.
@@ -27,9 +34,15 @@ correctly, nor did I extensively test it in any way.
 ## In Russian
 
 Баг в результате которого в Ubuntu шорткаты перестают в работать в русской
-раскладке [широко известен.][bug] С ним периодически борются, воз и ныне там,
-но в случае Emacs лучше пользоваться внутренними методами ввода, а системный
-переключатель вообще не трогать.
+раскладке [широко известен.][bug] С ним периодически борются, воз и ныне там --
+иногда работает, иногда нет.
+
+Тем не менее, в случае Emacs, исправление этого бага не гарантирует идеального
+результата: Умный input method может догадаться, что при включенной русской
+раскладке, набирая `C-x` мы имеем в виду именно `C-x`, а не `C-ч`. Но для
+Emacs вполне нормальна комбинация вроде `C-x w`, которая станет `C-x ц`,
+потому что мы отпускаем Ctrl после первого нажатия. Системный переключатель
+раскладки лучше вообще не трогать и пользоваться только внутренним.
 
 Однако как его не трогать, когда привычка вырабатывается.
 
