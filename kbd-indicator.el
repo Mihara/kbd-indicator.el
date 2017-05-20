@@ -65,6 +65,9 @@
   "org.gnome.SettingsDaemon.Keyboard"
   "Interface name of the keyboard switcher.")
 
+(defvar kbd-dbus-current-language nil
+  "Variable to keep the language id that we saw last.")
+
 (defvar kbd-dbus-signal-registration nil
   "Variable to keep the signal object.")
 
@@ -132,19 +135,24 @@ Returns t if frame has focus or nil otherwise."
       ;; The first one indicates new language
       ;; and produces a number.
       ;; The second one gets us a nil, so we ignore it.
-      ;; We also skip one if we set a dlag.
-      (if (and language-id (not kbd-dbus-skip-next))
-          ;; If the language id is not 0, flip it back.
-          (progn
-            ;; Every time we switch the language, we must set a flag to
-            ;; prevent us from triggering once the keyboard-indicator realizes
-            ;; the language changed again, which happens after we're done
-            ;; processing.
-            (kbd-dbus-reset-to-english)
-            (setq kbd-dbus-skip-next t)
-            ;; Toggle the input method.
-            (toggle-input-method))
-        (setq kbd-dbus-skip-next nil)))))
+      (when language-id
+        ;; We also skip one that results after we force it to 0,
+        ;; and we skip the event that results when we switch between two windows
+        ;; with different languages set.
+        (if (and (not (eq language-id kbd-dbus-current-language))
+                 (not kbd-dbus-skip-next))
+            (progn
+              ;; Every time we switch the language, we must set a flag to
+              ;; prevent us from triggering once the keyboard-indicator realizes
+              ;; the language changed again, which happens after we're done
+              ;; processing.
+              (kbd-dbus-reset-to-english)
+              (setq kbd-dbus-skip-next t)
+              ;; Toggle the input method.
+              (toggle-input-method)
+              (setq kbd-dbus-current-language language-id))
+          (setq kbd-dbus-skip-next nil))
+        (setq kbd-dbus-current-language language-id)))))
 
 (defun kbd-dbus-register-signal ()
   "Register the handler to listen on language change signal."
@@ -178,7 +186,10 @@ method switching instead."
 
   (if (getenv "DBUS_SESSION_BUS_ADDRESS")
       ;; Then hook up the signal.
-      (kbd-dbus-register-signal)
+      (progn
+        (setq kbd-dbus-current-language (kbd-dbus-get-current-state))
+        (kbd-dbus-register-signal))
+
 
     (message "To get at DBus, we require the environment variable
 DBUS_SESSION_BUS_ADDRESS to be set, passing us the DBus socket.
