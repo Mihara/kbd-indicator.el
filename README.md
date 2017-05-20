@@ -1,21 +1,21 @@
 # kbd-indicator.el
 
-This is an Ubuntu-specific way to solve an Ubuntu-specific problem: When you
-switch languages to ones that don't use Latin letters, or otherwise have a
-radically different layout, keyboard shortcuts stop working. See
-the [related Ubuntu bug][bug] -- which was supposedly fixed, but keeps
-reemerging anyway.
+This is an Ubuntu-specific way to solve a specific problem, which is most
+commonly seen on Ubuntu: When you switch languages to ones that don't use
+Latin letters, or otherwise have a radically different layout, keyboard
+shortcuts stop working. See the [related Ubuntu bug][bug] -- which was
+supposedly fixed, but keeps reemerging anyway.
 
 Generally, with Emacs, even fixing the bug for good won't be enough: While a
-clever system input method can guess that when you type `C-x` and have a
+clever system input method can guess that when you type `C-x` and have the
 Russian language selected, you mean `C-x` and not `C-ч`, you might have a
 keyboard combination like `C-x w`, which will come out as `C-x ц` *anyway,*
 because you release the modifier key after `C-x`. It's best not to use the
 system language switcher in Emacs at all.
 
 But if you're up to that, you have to remember to never touch the requisite
-key combination in Emacs, and have a separate keystroke to switch it inside
-Emacs, which is a pain.
+key combination in Emacs, and have a separate keystroke to switch languages
+while inside Emacs, which is a pain.
 
 This dirty hack alleviates this pain, by reaching across Dbus into Ubuntu's
 keyboard-indicator applet and registering to listen to language change events.
@@ -26,16 +26,21 @@ instead.
 
 This permits you to use Emacs' internal input method while switching it with
 the same language switch key that you use everywhere else, and have a
-per-buffer (rather than per-application) current input language.
+per-buffer *(rather than per-application)* current input language.
 
 I don't currently have a clue how to handle more than one non-English language
 correctly, nor did I extensively test it in any way.
+
+This package currently relies on the Ubuntu-specific keyboard-indicator
+API. If anyone can advise how to make it more general-purpose, pull requests
+are welcome.
 
 ## In Russian
 
 Баг в результате которого в Ubuntu шорткаты перестают в работать в русской
 раскладке [широко известен.][bug] С ним периодически борются, воз и ныне там --
-иногда работает, иногда нет.
+иногда работает, иногда нет. Иногда проблема встречается и в других
+дистрибутивах.
 
 Тем не менее, в случае Emacs, исправление этого бага не гарантирует идеального
 результата: Умный input method может догадаться, что при включенной русской
@@ -58,6 +63,11 @@ Emacs вполне нормальна комбинация вроде `C-x w`, �
 
 Что делать в случае более чем одного не-английского языка -- ума не приложу,
 насколько все это стабильно работает тоже пока не знаю.
+
+В настоящий момент, пакет рассчитывает на то, что вы пользуетесь
+keyboard-indicator, который специфичен для Ubuntu и родственников. Если кто-то
+может рассказать мне о том, как по dbus узнать об изменении языка в более
+общем случае, буду рад услышать.
 
 ## Usage
 
