@@ -73,11 +73,11 @@
 
 (defun kbd-dbus-reset-to-english ()
   "Reset keyboard to English by sending a dbus message."
-  (dbus-call-method
+  (dbus-call-method-asynchronously
    :session kbd-dbus-switcher
    kbd-dbus-switcher-path
    kbd-dbus-switcher-interface
-   "SetInputSource" 0))
+   "SetInputSource" nil 0))
 
 ;; This method of determining if Emacs is the active system window
 ;; was found at https://www.emacswiki.org/emacs/rcirc-dbus.el
