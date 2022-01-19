@@ -33,6 +33,8 @@ correctly, nor did I extensively test it in any way.
 This package was never tested on a Linux other than Ubuntu, but it may in fact
 work with other distributions using Gnome Shell.
 
+Emacs 27.1 or newer is required.
+
 ## In Russian
 
 Баг в результате которого в Ubuntu шорткаты перестают в работать в русской
@@ -64,6 +66,8 @@ Emacs вполне нормальна комбинация вроде `C-x w`, �
 
 Пакет никогда не тестировался на дистрибутивах Linux отличных от Ubuntu, но
 теоретически может работать с другими дистрибутивами использующими Gnome Shell.
+
+Для работы требуется Emacs 27.1 или новее.
 
 ## Usage
 
