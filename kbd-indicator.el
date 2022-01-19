@@ -1,6 +1,6 @@
 ;; kbd-indicator.el -- Switching Emacs input method on external language switch key.
 
-;;; (C) Eugene Medvedev 2017
+;;; (C) Eugene Medvedev 2017-2022
 
 ;;; This file is free software: you can redistribute it and/or modify
 ;;; it under the terms of the GNU General Public License as published by
@@ -12,27 +12,26 @@
 
 ;;; Commentary:
 
-;; This is an Ubuntu-specific way to solve an Ubuntu-specific problem:
-;; When you switch languages to ones that don't use Latin letters,
-;; keyboard shortcuts stop working.
+;; This is an Ubuntu-specific way to solve an Ubuntu-specific problem: When you
+;; switch languages to ones that don't use Latin letters, keyboard shortcuts
+;; stop working.  It may or may not work in other systems based on Gnome Shell.
+;; The name comes from originally relying on Unity and keyboard-indicator.
 ;;
 ;; Generally, in Emacs, you want to use the internal input method anyway, but
-;; then you have to remember to never switch the xkb language in Emacs, and
+;; then you have to remember to never switch the system language in Emacs, and
 ;; have a separate keystroke to switch it inside Emacs, which is a pain.
 ;;
-;; This dirty hack alleviates this pain, by reaching across Dbus into Ubuntu's
-;; keyboard-indicator applet and registering to listen to language change
-;; events.  Upon receiving a language change event with the Emacs window
-;; active, it will reset the language to language id 0 (which is presumed to
-;; be English -- so that keyboard shortcuts will keep working) and toggle the
-;; Emacs input method instead.
+;; This dirty hack alleviates this pain, by listening to Dbus events emitted
+;; when you switch languages.  Upon receiving one while the Emacs window is
+;; active, it will reset the language to English (so that keyboard shortcuts
+;; will keep working) and toggle the Emacs input method instead.
 ;;
-;; This permits you to use Emacs' internal input method while switching it
-;; with the same language switch key that you use everywhere else, and have a
+;; This permits you to use Emacs' internal input method while switching it with
+;; the same language switch key that you use everywhere else, and have a
 ;; per-buffer rather than per-application current input language.
 ;;
 ;; I don't currently have a clue how to handle more than one non-English
-;; language correctly.
+;; language correctly.  The language to avoid, however, can be customized.
 
 ;; Usage:
 
@@ -41,6 +40,9 @@
 ;; Enable it with Customize or with
 ;;
 ;;   (add-hook 'after-init-hook 'global-kbd-dbus-indicator-mode)
+;;
+;; If you use a language other than Russian that suffers from this problem, you
+;; can customize the language code.
 ;;
 ;; You want to set up the input method in the usual way as well, or there will
 ;; be nothing to toggle:
@@ -51,120 +53,99 @@
 
 (require 'dbus)
 
-(defconst kbd-dbus-service "com.canonical.indicator.keyboard"
-  "Name of the dbus service.")
-(defconst kbd-dbus-path "/com/canonical/indicator/keyboard"
-  "Path of the dbus service.")
-(defconst kbd-dbus-interface "org.gtk.Actions")
+(defgroup kbd-indicator nil "Kbd-indicator configuration."
+  :group 'languages)
 
-(defconst kbd-dbus-switcher "org.gnome.SettingsDaemon.Keyboard"
-  "Service that receives keyboard switcher events.")
-(defconst kbd-dbus-switcher-path "/org/gnome/SettingsDaemon/Keyboard"
-  "Path of the keyboard switcher service.")
-(defconst kbd-dbus-switcher-interface
-  "org.gnome.SettingsDaemon.Keyboard"
-  "Interface name of the keyboard switcher.")
-
-(defvar kbd-dbus-current-language nil
-  "Variable to keep the language id that we saw last.")
+(defcustom avoidance-language "ru"
+  "The language code to switch out of."
+  :type 'string
+  :group 'kbd-indicator)
 
 (defvar kbd-dbus-signal-registration nil
   "Variable to keep the signal object.")
 
 (defun kbd-dbus-reset-to-english ()
   "Reset keyboard to English by sending a dbus message."
+  ;; This is kind of an insane way to do it, but works well: we're essentially
+  ;; telling Gnome Shell to run javascript that will flip the keyboard
+  ;; language.  This is equivalent to
+
+  ;; gdbus call --session --dest org.gnome.Shell --object-path /org/gnome/Shell
+  ;; --method org.gnome.Shell.Eval
+  ;; "imports.ui.status.keyboard.getInputSourceManager().inputSources[0].activate()"
+
+  ;; Yes, we are assuming English is language 0 and hardcoding it.
+
   (dbus-call-method-asynchronously
-   :session kbd-dbus-switcher
-   kbd-dbus-switcher-path
-   kbd-dbus-switcher-interface
-   "SetInputSource" nil 0))
+   :session
+   "org.gnome.Shell"
+   "/org/gnome/Shell"
+   "org.gnome.Shell"
+   "Eval"
+   nil
+   (concat "imports.ui.status.keyboard.getInputSourceManager()"
+           ".inputSources[0].activate()")))
 
 ;; This method of determining if Emacs is the active system window
 ;; was found at https://www.emacswiki.org/emacs/rcirc-dbus.el
 (defun kbd-dbus-x-active-window ()
-  "Return the window ID of the current active window in X.
-as given by the _NET_ACTIVE_WINDOW of the root window set by the
+  "Return the window ID of the current active window in X \
+as given by the _NET_ACTIVE_WINDOW of the root window set by the \
 window-manager, or nil if not able to."
        (and (eq (window-system) 'x)
             (x-window-property
              "_NET_ACTIVE_WINDOW" nil "WINDOW" 0 nil t)))
 
 (defun kbd-dbus-frame-outer-window-id (frame)
-  "Return the frame outer-window-id property, or nil if FRAME not of the correct type."
+  "Return the frame outer-window-id property, or nil if FRAME not \
+of the correct type."
   (and (framep frame)
        (string-to-number (frame-parameter frame 'outer-window-id))))
 
 (defun kbd-dbus-frame-x-active-window-p (frame)
-  "Check if FRAME is the X active window.
-Returns t if frame has focus or nil otherwise."
-       (and (framep frame)
-            (eq (kbd-dbus-frame-outer-window-id frame)
-                (kbd-dbus-x-active-window))))
+  "Check if FRAME is the X active window. \
+Return t if frame has focus or nil otherwise."
+  (and (framep frame)
+       (eq (kbd-dbus-frame-outer-window-id frame)
+           (kbd-dbus-x-active-window))))
 
-(defun kbd-dbus-alive-p ()
-  "Ping the keyboard indicator service to see if it's alive."
-  (dbus-ignore-errors
-    (dbus-ping :session kbd-dbus-service)))
-
-(defun kbd-dbus-get-current-state ()
-  "Synchronously get the indicator's current state, i.e. language id."
-  (caaar
-   (nthcdr 2 (dbus-ignore-errors
-               (dbus-call-method :session
-                                 kbd-dbus-service
-                                 kbd-dbus-path
-                                 kbd-dbus-interface "Describe" "current")))))
-
-(defvar kbd-dbus-skip-next nil
-  "A flag we set to skip the next language change event.")
-
-(defun kbd-dbus-handler (arg1 arg2 arg3 arg4)
-  "Keyboard change signal handler."
-  ;; Ignore the signal if we're not the active window.
+(defun kbd-dbus-handler-new (group setting value)
+  "Language change signal handler."
   (when (kbd-dbus-frame-x-active-window-p (selected-frame))
-    (let
-        ;; This gets us the number of current language in the ugliest way possible.
-        ;; If anyone knows a smoother method, pull requests welcome.
-        ((language-id
-          (caaar
-           (delq nil (mapcar
-                      (lambda (x)
-                        (when (string= (car x) "current") (cdr x)))
-                      arg3)))))
-      ;; The signals appear to come in pairs.
-      ;; The first one indicates new language
-      ;; and produces a number.
-      ;; The second one gets us a nil, so we ignore it.
-      (when language-id
-        ;; We also skip one that results after we force it to 0,
-        ;; and we skip the event that results when we switch between two windows
-        ;; with different languages set.
-        (if (and (not (eq language-id kbd-dbus-current-language))
-                 (not kbd-dbus-skip-next))
-            (progn
-              ;; Every time we switch the language, we must set a flag to
-              ;; prevent us from triggering once the keyboard-indicator realizes
-              ;; the language changed again, which happens after we're done
-              ;; processing.
-              (kbd-dbus-reset-to-english)
-              (setq kbd-dbus-skip-next t)
-              ;; Toggle the input method.
-              (toggle-input-method)
-              (setq kbd-dbus-current-language language-id))
-          (setq kbd-dbus-skip-next nil))
-        (setq kbd-dbus-current-language language-id)))))
+    (when (and
+           (equal group "org.gnome.desktop.input-sources")
+           (equal setting "mru-sources"))
+      ;; What we get here is a structure like
+
+      ;; ((("xkb" "<language code>") ("xkb" "ru")))
+
+      ;; where `language code' is the language last switched to, either 'ru' or
+      ;; 'us' in my case.
+      (let ((language-id (cadr (caar value))))
+        ;; With this input signal and language switching method, we don't get
+        ;; an event when we force the language back to English.  This makes
+        ;; things magnitudes easier than they were with keyboard-indicator: if
+        ;; the language we switched into is the one we're avoiding, flip it
+        ;; back. Then toggle the input method.
+        (when (equal language-id avoidance-language)
+          (kbd-dbus-reset-to-english))
+        (toggle-input-method))
+      )))
+
 
 (defun kbd-dbus-register-signal ()
   "Register the handler to listen on language change signal."
   (unless kbd-dbus-signal-registration
-    (when (kbd-dbus-alive-p)
-      (setq kbd-dbus-signal-registration
-            (dbus-ignore-errors
-              (dbus-register-signal :session kbd-dbus-service
-                                    kbd-dbus-path
-                                    kbd-dbus-interface
-                                    "Changed" 'kbd-dbus-handler :eavesdrop)))
-      (add-hook 'kill-emacs-hook 'kbd-dbus-unregister-signal))))
+    (setq kbd-dbus-signal-registration
+          (dbus-ignore-errors
+            (dbus-register-signal
+             :session
+             nil ;; dbus service is nil - this is a broadcast signal.
+             "/org/freedesktop/portal/desktop" ;; path
+             "org.freedesktop.impl.portal.Settings" ;; interface
+             "SettingChanged" ;; signal - method name, that is.
+             'kbd-dbus-handler-new :eavesdrop)))
+    (add-hook 'kill-emacs-hook 'kbd-dbus-unregister-signal)))
 
 (defun kbd-dbus-unregister-signal ()
   "Unregister a previously registered signal."
@@ -176,9 +157,9 @@ Returns t if frame has focus or nil otherwise."
 (define-minor-mode kbd-dbus-indicator-mode
   "Toggle kbd-dbus-indicator mode.
 
-Minor mode to intercept language change events emitted by
-Ubuntu's keyboard-indicator and use the Emacs' built-in input
-method switching instead."
+Minor mode to intercept language change events emitted by Gnome \
+Shell and use the Emacs' built-in input method switching \
+instead."
 
   :init-value nil
   :group 'kbd-dbus
@@ -186,13 +167,9 @@ method switching instead."
 
   (if (getenv "DBUS_SESSION_BUS_ADDRESS")
       ;; Then hook up the signal.
-      (progn
-        (setq kbd-dbus-current-language (kbd-dbus-get-current-state))
-        (kbd-dbus-register-signal))
-
-
-    (message "To get at DBus, we require the environment variable
-DBUS_SESSION_BUS_ADDRESS to be set, passing us the DBus socket.
+      (kbd-dbus-register-signal)
+    (message "To get at DBus, we require the environment variable \
+DBUS_SESSION_BUS_ADDRESS to be set, passing us the DBus socket. \
 It is not set. Indicator-based language switching will not work.")
     (global-kbd-dbus-indicator-mode -1)))
 

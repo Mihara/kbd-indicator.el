@@ -17,12 +17,11 @@ But if you're up to that, you have to remember to never touch the requisite
 key combination in Emacs, and have a separate keystroke to switch languages
 while inside Emacs, which is a pain.
 
-This dirty hack alleviates this pain, by reaching across Dbus into Ubuntu's
-keyboard-indicator applet and registering to listen to language change events.
-Upon receiving a language change event with the Emacs window active, it will
-reset the language to language id 0 *(which is presumed to be English -- so
-that keyboard shortcuts will keep working)* and toggle the Emacs input method
-instead.
+This dirty hack alleviates this pain, by listening to Dbus events Gnome Shell
+emits when you use the system language switcher.  Upon receiving a language
+change event with the Emacs window active, it will reset the language to
+language id 0 *(which is presumed to be English -- so that keyboard shortcuts
+will keep working)* and toggle the Emacs input method instead.
 
 This permits you to use Emacs' internal input method while switching it with
 the same language switch key that you use everywhere else, and have a
@@ -31,9 +30,8 @@ per-buffer *(rather than per-application)* current input language.
 I don't currently have a clue how to handle more than one non-English language
 correctly, nor did I extensively test it in any way.
 
-This package currently relies on the Ubuntu-specific keyboard-indicator
-API. If anyone can advise how to make it more general-purpose, pull requests
-are welcome.
+This package was never tested on a Linux other than Ubuntu, but it may in fact
+work with other distributions using Gnome Shell.
 
 ## In Russian
 
@@ -52,7 +50,7 @@ Emacs вполне нормальна комбинация вроде `C-x w`, �
 Однако как его не трогать, когда привычка вырабатывается.
 
 Предлагаемый хитрый Ubuntu-специфический трюк позволяет не вырабатывать новую
-привычку: Этот пакет садится на Dbus и слушает сообщения keyboard-indicator о
+привычку: Этот пакет садится на Dbus и слушает сообщения Gnome Shell о
 переключении языка. При получении их, он сбрасывает язык обратно на английский
 *(подразумевая что он имеет language id 0, то есть стоит в списке первым)* и
 выполняет переключение языка уже в Emacs.
@@ -64,10 +62,8 @@ Emacs вполне нормальна комбинация вроде `C-x w`, �
 Что делать в случае более чем одного не-английского языка -- ума не приложу,
 насколько все это стабильно работает тоже пока не знаю.
 
-В настоящий момент, пакет рассчитывает на то, что вы пользуетесь
-keyboard-indicator, который специфичен для Ubuntu и родственников. Если кто-то
-может рассказать мне о том, как по dbus узнать об изменении языка в более
-общем случае, буду рад услышать.
+Пакет никогда не тестировался на дистрибутивах Linux отличных от Ubuntu, но
+теоретически может работать с другими дистрибутивами использующими Gnome Shell.
 
 ## Usage
 
